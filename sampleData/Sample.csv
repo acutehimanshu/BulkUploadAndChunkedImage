@@ -1,0 +1,4 @@
+sku,name,description,price
+SKU123,Product One,First product,100.50
+SKU124,Product Two,Second product,200.00
+SKU125,Product Three,,150.00
