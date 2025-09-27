@@ -20,6 +20,7 @@ return new class extends Migration
             $table->string('checksum')->nullable(); // Validation purpuse k liye
             $table->unsignedBigInteger('total_size');
             $table->unsignedBigInteger('uploaded_size')->default(0);
+            $table->json('received_chunks')->nullable(); // array of received chunk indices
             $table->boolean('is_completed')->default(false);
             $table->timestamps();
         });
