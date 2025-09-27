@@ -19,4 +19,3 @@ class ImportSummary extends Model
         'is_completed',
     ];
 }
-

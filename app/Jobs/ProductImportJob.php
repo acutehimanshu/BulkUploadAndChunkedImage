@@ -5,38 +5,39 @@ namespace App\Jobs;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use App\Models\Product;
+use App\Models\ImportSummary;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use App\Models\ImportSummary;
 
 class ProductImportJob implements ShouldQueue
 {
     use Queueable, InteractsWithQueue, SerializesModels;
-    protected $filePath;
+
+    protected string $filePath;
+    protected int $summaryId;
 
     // Counters
-    protected $total = 0;
-    protected $imported = 0;
-    protected $updated = 0;
-    protected $invalid = 0;
-    protected $duplicates = 0;
+    protected int $total = 0;
+    protected int $imported = 0;
+    protected int $updated = 0;
+    protected int $invalid = 0;
+    protected int $duplicates = 0;
 
-    /**
-     * Create a new job instance.
-     */
-    public function __construct($filePath)
+    public function __construct(string $filePath, int $summaryId)
     {
         $this->filePath = $filePath;
+        $this->summaryId = $summaryId;
     }
 
-    /**
-     * Execute the job.
-     */
-    public function handle()
+    public function handle(): void
     {
         $summary = ImportSummary::find($this->summaryId);
-        $processedSkus = []; 
+        if (!$summary) {
+            return;
+        }
+
+        $processedSkus = [];
         $file = Storage::path($this->filePath);
 
         if (!file_exists($file)) {
@@ -44,50 +45,73 @@ class ProductImportJob implements ShouldQueue
         }
 
         if (($handle = fopen($file, 'r')) !== false) {
-            $header = fgetcsv($handle); 
+            $header = fgetcsv($handle);
 
             while (($row = fgetcsv($handle)) !== false) {
                 $this->total++;
 
-                $rowData = array_combine($header, $row); 
+                $rowData = array_combine($header, $row);
 
-                // checking data
+                
                 if (empty($rowData['sku']) || empty($rowData['name']) || empty($rowData['price'])) {
                     $this->invalid++;
                     continue;
                 }
-                // checking dublicat
+
+                // Duplicate 
                 if (in_array($rowData['sku'], $processedSkus)) {
                     $this->duplicates++;
                     continue;
                 }
                 $processedSkus[] = $rowData['sku'];
 
-                $product = Product::updateOrCreate(
-                    ['sku' => $rowData['sku']],
-                    [
+                // exists
+                $existing = Product::where('sku', $rowData['sku'])->first();
+
+                if (!$existing) {
+                    
+                    Product::create([
+                        'sku' => $rowData['sku'],
                         'name' => $rowData['name'],
                         'description' => $rowData['description'] ?? null,
                         'price' => $rowData['price'],
-                    ]
-                );
-
-                if ($product->wasRecentlyCreated) {
+                    ]);
                     $this->imported++;
-                } elseif ($product->wasChanged()) {
-                    $this->updated++;
+                } else {
+                    
+                    $changed = false;
+
+                    if (
+                        $existing->name !== $rowData['name'] ||
+                        $existing->description !== ($rowData['description'] ?? null) ||
+                        (float)$existing->price !== (float)$rowData['price']
+                    ) {
+                        $existing->update([
+                            'name' => $rowData['name'],
+                            'description' => $rowData['description'] ?? null,
+                            'price' => $rowData['price'],
+                        ]);
+                        $this->updated++;
+                        $changed = true;
+                    }
+
+                    if (!$changed) {
+                        
+                        $this->duplicates++;
+                    }
                 }
             }
             fclose($handle);
         }
 
         $summary->update([
-            'total'      => $this->total,
-            'imported'   => $this->imported,
-            'updated'    => $this->updated,
-            'invalid'    => $this->invalid,
-            'duplicates' => $this->duplicates,
+            'total'        => $this->total,
+            'imported'     => $this->imported,
+            'updated'      => $this->updated,
+            'invalid'      => $this->invalid,
+            'duplicates'   => $this->duplicates,
             'is_completed' => true,
         ]);
     }
+
 }

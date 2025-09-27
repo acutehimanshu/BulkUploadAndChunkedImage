@@ -9,5 +9,7 @@ Steps
 > php artisan make:model Product -m
 > php artisan make:model Upload -m
 > php artisan make:model Image -m
+> php artisan make:model ImportSummaries -m
+import_summaries
 > php artsan make:controller ProductImport
 > php artisan make:job ProductImportJob
